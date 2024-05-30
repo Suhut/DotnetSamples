@@ -1,5 +1,8 @@
+using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using System;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,11 +41,24 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.MapGet("/cmdSuccess", async () =>
+app.MapGet("/cmdSuccess", async (TracerProvider tracerProvider, ILogger<Program> logger) =>
 {
     var random = new Random();
     int dice = random.Next(0, 5);
     await Task.Delay(dice * 1000);
+
+
+    var currentActivity = Activity.Current;
+    if (currentActivity != null)
+    {
+        currentActivity.AddTag("custom-tag", "halo saya suhut"); 
+
+        var activityEvent01 = new ActivityEvent("Transaksi Sukses 01",  tags: new ActivityTagsCollection { new("products.count", 1), new("products.sum", 2) });
+        currentActivity.AddEvent(activityEvent01);
+        var activityEvent02 = new ActivityEvent("Transaksi Sukses 02", tags: new ActivityTagsCollection { new("products.count", 10), new("products.sum", 20) });
+        currentActivity.AddEvent(activityEvent02);
+    }
+
 
     return Results.Ok();
 }).WithOpenApi();
