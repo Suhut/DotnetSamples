@@ -1,0 +1,35 @@
+
+
+
+## COMPLETE DOCKER COMPOSE
+
+##grafana, grafana-loki
+https://grafana.com/docs/loki/latest/installation/docker/
+
+
+## LOCAL INSTALATION IN WINDOWS MACHINE WITH EXE FILE
+
+##grafana 
+https://grafana.com/docs/grafana/latest/setup-grafana/installation/windows/
+.\grafana-server.exe  
+ 
+ 
+##grafana-loki 
+https://github.com/grafana/loki/releases
+.\loki-windows-amd64.exe --config.file=loki-local-config.yaml  
+
+
+---------------------------
+
+## CHECK INSTALATION
+
+##
+##grafana  
+http://localhost:3000 
+user : admin
+passw : admin
+ 
+ 
+##grafana-loki  
+http://localhost:3100
+http://localhost:3100/metrics

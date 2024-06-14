@@ -1,0 +1,12 @@
+@host = http://localhost:5049
+ 
+
+GET {{host}}/cmdSuccess
+content-type: application/json
+
+###
+
+GET {{host}}/cmdFail
+content-type: application/json
+
+ 
