@@ -19,7 +19,8 @@ IDictionary<string, ColumnWriterBase> columnWriters = new Dictionary<string, Col
     { "Id", new IdAutoIncrementColumnWriter () }, 
     { "Message", new RenderedMessageColumnWriter() },
     { "MessageTemplate", new MessageTemplateColumnWriter() },
-    { "Level", new LevelColumnWriter(true, NpgsqlDbType.Text) }, //{ "Level", new LevelColumnWriter() }
+    { "Level", new LevelColumnWriter() },  
+    //{ "Level", new LevelColumnWriter(true, NpgsqlDbType.Text) },
     { "Timestamp", new TimestampColumnWriter() }, 
     { "Exception", new ExceptionColumnWriter() },
     { "LogEvent", new LogEventSerializedColumnWriter() },
@@ -64,7 +65,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddSerilogUi(options => options
     .UseNpgSql(optionsDb => optionsDb.WithConnectionString("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;")
                                 .WithTable("logs")
-                                .WithSinkType(PostgreSqlSinkType.SerilogSinksPostgreSQLAlternative) 
+                                .WithSinkType(PostgreSqlSinkType.SerilogSinksPostgreSQLAlternative)  
                                 )
     .UseSqlServer(optionsDb => optionsDb.WithConnectionString("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;")
                                     .WithTable("logs")
@@ -104,7 +105,7 @@ app.MapGet("/cmdFail", async () =>
     int dice = random.Next(0, 5);
     await Task.Delay(dice * 1000);
 
-    Log.Information($"DELAY : {dice} ## cmdFail");
+    Log.Error($"DELAY : {dice} ## cmdFail");
 
     return Results.BadRequest();
 }).WithOpenApi();
