@@ -2,12 +2,16 @@ using NpgsqlTypes;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
+using Serilog.Sinks.MSSqlServer;
 using Serilog.Sinks.PostgreSQL.ColumnWriters;
 using Serilog.Ui.Core.OptionsBuilder;
 using Serilog.Ui.MsSqlServerProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Models;
 using Serilog.Ui.Web.Extensions;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,14 +23,19 @@ IDictionary<string, ColumnWriterBase> columnWriters = new Dictionary<string, Col
     { "Id", new IdAutoIncrementColumnWriter () }, 
     { "Message", new RenderedMessageColumnWriter() },
     { "MessageTemplate", new MessageTemplateColumnWriter() },
-    { "Level", new LevelColumnWriter() },  
-    //{ "Level", new LevelColumnWriter(true, NpgsqlDbType.Text) },
+    { "Level", new LevelColumnWriter() },
+    { "LevelName", new LevelColumnWriter(true, NpgsqlDbType.Text) },
     { "Timestamp", new TimestampColumnWriter() }, 
     { "Exception", new ExceptionColumnWriter() },
     { "LogEvent", new LogEventSerializedColumnWriter() },
-    { "PropertyTest", new PropertiesColumnWriter(NpgsqlDbType.Text) },
-    { "MachineName", new SinglePropertyColumnWriter("MachineName", format: "l") }
+    { "PropertyTest", new PropertiesColumnWriter(NpgsqlDbType.Text) }, 
+    { "MachineName", new SinglePropertyColumnWriter("MachineName", format: "l") },
+    { "SpanId", new SpanIdColumnWriterBase() }
+    { "TranceId", new TranceIdColumnWriterBase() },
+    { "RequestId", new SinglePropertyColumnWriter("RequestId", format: "l") },
+
 };
+
 
 
 builder.Host
@@ -35,19 +44,19 @@ builder.Host
         config.MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", context.HostingEnvironment.ApplicationName)
-            .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName)
-
+            .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName) 
+            
 
             .WriteTo.PostgreSQL("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;",
-            "logs", 
-            columnOptions: columnWriters,
-            needAutoCreateTable: true
-
+                                    "logs",
+                                    columnOptions: columnWriters,
+                                    needAutoCreateTable: true
 
             )
 
             .WriteTo.MSSqlServer("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;",
                                     "logs",
+
                                     autoCreateSqlTable: true,
                                     batchPostingLimit: 1
                                     )
@@ -64,7 +73,7 @@ builder.Services.AddSwaggerGen();
 //version : 3.*
 builder.Services.AddSerilogUi(options => options
     .UseNpgSql(optionsDb => optionsDb.WithConnectionString("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;")
-                                .WithTable("logs")
+                                .WithTable("logs") 
                                 .WithSinkType(PostgreSqlSinkType.SerilogSinksPostgreSQLAlternative)  
                                 )
     .UseSqlServer(optionsDb => optionsDb.WithConnectionString("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;")
@@ -117,3 +126,28 @@ app.MapGet("/", async () =>
 
 app.Run();
 
+public class TranceIdColumnWriterBase : ColumnWriterBase
+{
+    public TranceIdColumnWriterBase(NpgsqlDbType dbType = NpgsqlDbType.Text) : base(dbType)
+    {
+        this.DbType = NpgsqlDbType.Text;
+    }
+
+    public override object GetValue(LogEvent logEvent, IFormatProvider formatProvider = null)
+    {
+        return logEvent.TraceId.ToString();
+    }
+}
+
+public class SpanIdColumnWriterBase : ColumnWriterBase
+{
+    public SpanIdColumnWriterBase(NpgsqlDbType dbType = NpgsqlDbType.Text) : base(dbType)
+    {
+        this.DbType = NpgsqlDbType.Text;
+    }
+
+    public override object GetValue(LogEvent logEvent, IFormatProvider formatProvider = null)
+    {
+        return logEvent.SpanId.ToString();
+    }
+}
