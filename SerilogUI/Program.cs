@@ -8,6 +8,7 @@ using Serilog.Ui.MsSqlServerProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Models;
 using Serilog.Ui.Web.Extensions;
+using SerilogUI.CusttomColumnWriter;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,9 +25,8 @@ IDictionary<string, ColumnWriterBase> columnWriters = new Dictionary<string, Col
     { "Timestamp", new TimestampColumnWriter() }, 
     { "Exception", new ExceptionColumnWriter() },
     { "LogEvent", new LogEventSerializedColumnWriter() },
-    { "PropertyTest", new PropertiesColumnWriter(NpgsqlDbType.Text) }, 
-    { "MachineName", new SinglePropertyColumnWriter("MachineName", format: "l") },
-    { "SpanId", new SpanIdColumnWriterBase() }
+    //{ "Properties", new PropertiesColumnWriter(NpgsqlDbType.Text) },  
+    { "SpanId", new SpanIdColumnWriterBase() },
     { "TranceId", new TranceIdColumnWriterBase() },
     { "RequestId", new SinglePropertyColumnWriter("RequestId", format: "l") },
 
@@ -50,11 +50,11 @@ builder.Host
 
             )
 
-            .WriteTo.MSSqlServer("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;",
-                                    "logs", 
-                                    autoCreateSqlTable: true,
-                                    batchPostingLimit: 1
-                                    )
+            //.WriteTo.MSSqlServer("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;",
+            //                        "logs", 
+            //                        autoCreateSqlTable: true,
+            //                        batchPostingLimit: 1
+            //                        )
             ;
 
         if (context.HostingEnvironment.IsDevelopment())
@@ -71,9 +71,9 @@ builder.Services.AddSerilogUi(options => options
                                 .WithTable("logs") 
                                 .WithSinkType(PostgreSqlSinkType.SerilogSinksPostgreSQLAlternative)  
                                 )
-    .UseSqlServer(optionsDb => optionsDb.WithConnectionString("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;")
-                                    .WithTable("logs")
-                                    )
+    //.UseSqlServer(optionsDb => optionsDb.WithConnectionString("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;")
+    //                                .WithTable("logs")
+    //                                )
     ); 
 
 
@@ -121,28 +121,5 @@ app.MapGet("/", async () =>
 
 app.Run();
 
-public class TranceIdColumnWriterBase : ColumnWriterBase
-{
-    public TranceIdColumnWriterBase(NpgsqlDbType dbType = NpgsqlDbType.Text) : base(dbType)
-    {
-        this.DbType = NpgsqlDbType.Text;
-    }
 
-    public override object GetValue(LogEvent logEvent, IFormatProvider formatProvider = null)
-    {
-        return logEvent.TraceId.ToString();
-    }
-}
 
-public class SpanIdColumnWriterBase : ColumnWriterBase
-{
-    public SpanIdColumnWriterBase(NpgsqlDbType dbType = NpgsqlDbType.Text) : base(dbType)
-    {
-        this.DbType = NpgsqlDbType.Text;
-    }
-
-    public override object GetValue(LogEvent logEvent, IFormatProvider formatProvider = null)
-    {
-        return logEvent.SpanId.ToString();
-    }
-}
