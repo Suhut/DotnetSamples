@@ -2,16 +2,12 @@ using NpgsqlTypes;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
-using Serilog.Sinks.MSSqlServer;
 using Serilog.Sinks.PostgreSQL.ColumnWriters;
 using Serilog.Ui.Core.OptionsBuilder;
 using Serilog.Ui.MsSqlServerProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Models;
 using Serilog.Ui.Web.Extensions;
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,8 +51,7 @@ builder.Host
             )
 
             .WriteTo.MSSqlServer("Server=SUHUT-TUF;Database=serilog;TrustServerCertificate=True;Trusted_Connection=True;MultipleActiveResultSets=true;Application Name=serilog;",
-                                    "logs",
-
+                                    "logs", 
                                     autoCreateSqlTable: true,
                                     batchPostingLimit: 1
                                     )
