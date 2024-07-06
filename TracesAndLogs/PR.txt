@@ -1,0 +1,9 @@
+
+--
+buat project api1 dan api2 kemudian gunakan AddTranceAndLogs di api1 dan api2
+
+--done
+buat project shared untuk AddTranceAndLogs (serilog ui tidak usah karena ini hanya ada di 1 project saja)
+
+--
+satukan nuget untuk beberapa project

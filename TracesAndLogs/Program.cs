@@ -1,95 +1,36 @@
 using Dapper;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using NpgsqlTypes;
-using OpenTelemetry;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
-using Serilog.Sinks.PostgreSQL.ColumnWriters;
-using System.Data;
-using System.Diagnostics;
-using TracesAndLogs;
-using TracesAndLogs.CusttomColumnWriter;
-
-using NpgsqlTypes;
+using OpenTelemetry.Trace; 
 using Serilog;
-using Serilog.Events;
-using Serilog.Formatting.Compact;
-using Serilog.Sinks.PostgreSQL.ColumnWriters;
-using Serilog.Ui.Core.OptionsBuilder; 
+using Serilog.Ui.Core.OptionsBuilder;
 using Serilog.Ui.PostgreSqlProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Models;
-using Serilog.Ui.Web.Extensions; 
+using Serilog.Ui.Web.Extensions;
+using System.Data;
+using System.Diagnostics;
+using System.Net.Http;
+using TracesAndLogs;
+using TracesAndLogs.Shared.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 
-IDictionary<string, ColumnWriterBase> columnWriters = new Dictionary<string, ColumnWriterBase>
-{
-    { "Id", new IdAutoIncrementColumnWriter () },
-    { "Message", new RenderedMessageColumnWriter() },
-    { "MessageTemplate", new MessageTemplateColumnWriter() },
-    { "Level", new LevelColumnWriter() },
-    { "LevelName", new LevelColumnWriter(true, NpgsqlDbType.Text) },
-    { "Timestamp", new TimestampColumnWriter() },
-    { "Exception", new ExceptionColumnWriter() },
-    { "LogEvent", new LogEventSerializedColumnWriter() },
-    //{ "Properties", new PropertiesColumnWriter(NpgsqlDbType.Text) },  
-    { "SpanId", new SpanIdColumnWriterBase() },
-    { "TranceId", new TranceIdColumnWriterBase() },
-    { "RequestId", new SinglePropertyColumnWriter("RequestId", format: "l") },
-
-};
-
-builder.Host
-    .UseSerilog((context, config) =>
-    {
-        config.MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-            .Enrich.FromLogContext()
-            .Enrich.WithProperty("Application", context.HostingEnvironment.ApplicationName)
-            .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName)
-
-
-            .WriteTo.PostgreSQL("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;",
-                                    "logs",
-                                    columnOptions: columnWriters,
-                                    needAutoCreateTable: true
-
-            )
-            ;
-
-        if (context.HostingEnvironment.IsDevelopment())
-            config.WriteTo.Console(new RenderedCompactJsonFormatter());
-    });
-
+builder.AddTracesAndLogs(); 
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseNpgsql("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234"));
-
-builder.Services.AddOpenTelemetry()
-    .WithTracing(options => options 
-        .ConfigureResource(resourceBuilder =>
-        {
-            resourceBuilder.AddService(
-                builder.Environment.ApplicationName,
-                builder.Environment.EnvironmentName,
-                "1.0",
-                false,
-                Environment.MachineName);
-        })
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddEntityFrameworkCoreInstrumentation() 
-        .AddNpgsql()
-        .AddOtlpExporter(options =>
-        {
-            options.Endpoint = new Uri("http://localhost:4317");
-        })
-    );
+        options.UseNpgsql("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234")); 
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHttpClient("api2", c =>
+{
+    c.BaseAddress = new Uri("http://localhost:5253");
+    c.Timeout = TimeSpan.FromSeconds(15);
+    c.DefaultRequestHeaders.Add(
+        "accept", "application/json");
+});
 
 //version : 3.* 
 builder.Services.AddSerilogUi(options => options
@@ -113,7 +54,8 @@ if (app.Environment.IsDevelopment())
 }
 
 
-app.UseMiddleware<RequestLoggingMiddleware>();
+//app.UseMiddleware<RequestLoggingMiddleware>();
+app.AddTracesAndLogs();
 
 app.UseSerilogUi();//serilog-ui  
 
@@ -174,6 +116,23 @@ app.MapGet("/Dapper", async () =>
     }
     Log.Information($"dari Dapper");
     return Results.Ok();
+}).WithOpenApi();
+
+app.MapGet("/CallApi2", async (IHttpClientFactory httpClientFactory) =>
+{
+    var requestId = Activity.Current?.Id;
+
+    Log.Information("Calling api2");
+
+    var client = httpClientFactory.CreateClient("api2");
+    client.DefaultRequestHeaders.Add("Request-Id", requestId);
+
+    var response = await client.GetAsync("WeatherForecast");
+
+    if (response.IsSuccessStatusCode)
+        return Results.Ok(await response.Content.ReadAsStringAsync());
+
+    return Results.BadRequest();
 }).WithOpenApi();
 
 app.Run();

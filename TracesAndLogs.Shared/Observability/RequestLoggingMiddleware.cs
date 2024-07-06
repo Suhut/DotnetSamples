@@ -1,6 +1,7 @@
-﻿using Serilog;
+﻿using Microsoft.AspNetCore.Http;
+using Serilog;
 
-namespace TracesAndLogs;
+namespace TracesAndLogs.Shared.Observability;
 
 
 

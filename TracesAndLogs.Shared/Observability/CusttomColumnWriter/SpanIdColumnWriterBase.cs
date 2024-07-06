@@ -2,7 +2,7 @@
 using Serilog.Events;
 using Serilog.Sinks.PostgreSQL.ColumnWriters;
 
-namespace TracesAndLogs.CusttomColumnWriter;
+namespace TracesAndLogs.Shared.Observability.CusttomColumnWriter;
 
 public class SpanIdColumnWriterBase : ColumnWriterBase
 {
