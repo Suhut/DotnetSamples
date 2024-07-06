@@ -1,13 +1,20 @@
+using Dapper;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using System;
+using OpenTelemetryTraces;
+using System.Data;
 using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseNpgsql("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234"));
+
 builder.Services.AddOpenTelemetry()
-    .WithTracing(options => options
+    .WithTracing(options => options 
         .ConfigureResource(resourceBuilder =>
         {
             resourceBuilder.AddService(
@@ -19,6 +26,8 @@ builder.Services.AddOpenTelemetry()
         })
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
+        .AddEntityFrameworkCoreInstrumentation() 
+        .AddNpgsql()
         .AddOtlpExporter(options =>
         {
             options.Endpoint = new Uri("http://localhost:4317");
@@ -52,7 +61,8 @@ app.MapGet("/cmdSuccess", async (TracerProvider tracerProvider, ILogger<Program>
     var currentActivity = Activity.Current;
     if (currentActivity != null)
     {
-        currentActivity.AddTag("custom-tag", "halo saya suhut"); 
+        var test01 = currentActivity.AddTag("custom-tag", "halo saya suhut");
+        test01.AddBaggage("custom-baggage", "halo saya baggage");
 
         var activityEvent01 = new ActivityEvent("Transaksi Sukses 01",  tags: new ActivityTagsCollection { new("products.count", 1), new("products.sum", 2) });
         currentActivity.AddEvent(activityEvent01);
@@ -71,6 +81,25 @@ app.MapGet("/cmdFail", async () =>
     await Task.Delay(dice * 1000);
 
     return Results.BadRequest();
+}).WithOpenApi();
+
+app.MapGet("/EF", async (ApplicationDbContext context) =>
+{
+    context.MyEntities.Add(new MyEntity { Name=$"Suhut EF {Guid.NewGuid().ToString("N")}"});
+    await context.SaveChangesAsync(); 
+    return Results.Ok();
+}).WithOpenApi();
+
+app.MapGet("/Dapper", async () =>
+{
+  
+    using (IDbConnection db = new NpgsqlConnection("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234"))
+    {
+        db.Open();
+        var ssql = @"INSERT INTO ""MyEntities"" (""Name"") VALUES('SUHUT Dapper')";
+        await db.ExecuteAsync(ssql);
+    }
+    return Results.Ok();
 }).WithOpenApi();
 
 app.Run();

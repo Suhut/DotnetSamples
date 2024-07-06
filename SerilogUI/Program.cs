@@ -8,6 +8,7 @@ using Serilog.Ui.MsSqlServerProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Extensions;
 using Serilog.Ui.PostgreSqlProvider.Models;
 using Serilog.Ui.Web.Extensions;
+using SerilogUI;
 using SerilogUI.CusttomColumnWriter;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -65,7 +66,7 @@ builder.Services.AddSwaggerGen();
 
 
 
-//version : 3.*
+//version : 3.* 
 builder.Services.AddSerilogUi(options => options
     .UseNpgSql(optionsDb => optionsDb.WithConnectionString("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;")
                                 .WithTable("logs") 
@@ -88,6 +89,8 @@ if (app.Environment.IsDevelopment())
 
 //app.UseAuthentication();
 //app.UseAuthorization();
+
+app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.UseSerilogUi();//serilog-ui  
 
