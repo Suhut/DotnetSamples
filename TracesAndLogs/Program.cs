@@ -1,7 +1,7 @@
 using Dapper;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using OpenTelemetry.Trace; 
+using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Ui.Core.OptionsBuilder;
 using Serilog.Ui.PostgreSqlProvider.Extensions;
@@ -15,10 +15,10 @@ using TracesAndLogs.Shared.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddTracesAndLogs(); 
+builder.AddTracesAndLogs();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseNpgsql("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234")); 
+        options.UseNpgsql("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234"));
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -29,7 +29,8 @@ builder.Services.AddHttpClient("api2", c =>
     c.BaseAddress = new Uri("http://localhost:5253");
     c.Timeout = TimeSpan.FromSeconds(15);
     c.DefaultRequestHeaders.Add(
-        "accept", "application/json");
+        "accept", "application/json"); 
+
 });
 
 //version : 3.* 
@@ -37,7 +38,7 @@ builder.Services.AddSerilogUi(options => options
     .UseNpgSql(optionsDb => optionsDb.WithConnectionString("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;")
                                 .WithTable("logs")
                                 .WithSinkType(PostgreSqlSinkType.SerilogSinksPostgreSQLAlternative)
-                                ) 
+                                )
     );
 
 
@@ -54,8 +55,7 @@ if (app.Environment.IsDevelopment())
 }
 
 
-//app.UseMiddleware<RequestLoggingMiddleware>();
-app.AddTracesAndLogs();
+app.UseTracesAndLogs();
 
 app.UseSerilogUi();//serilog-ui  
 
@@ -72,7 +72,7 @@ app.MapGet("/cmdSuccess", async (TracerProvider tracerProvider, ILogger<Program>
         var test01 = currentActivity.AddTag("custom-tag", "halo saya suhut");
         test01.AddBaggage("custom-baggage", "halo saya baggage");
 
-        var activityEvent01 = new ActivityEvent("Transaksi Sukses 01",  tags: new ActivityTagsCollection { new("products.count", 1), new("products.sum", 2) });
+        var activityEvent01 = new ActivityEvent("Transaksi Sukses 01", tags: new ActivityTagsCollection { new("products.count", 1), new("products.sum", 2) });
         currentActivity.AddEvent(activityEvent01);
         var activityEvent02 = new ActivityEvent("Transaksi Sukses 02", tags: new ActivityTagsCollection { new("products.count", 10), new("products.sum", 20) });
         currentActivity.AddEvent(activityEvent02);
@@ -97,7 +97,7 @@ app.MapGet("/cmdFail", async () =>
 
 app.MapGet("/EF", async (ApplicationDbContext context) =>
 {
-    context.MyEntities.Add(new MyEntity { Name=$"Suhut EF {Guid.NewGuid().ToString("N")}"});
+    context.MyEntities.Add(new MyEntity { Name = $"Suhut EF {Guid.NewGuid().ToString("N")}" });
     await context.SaveChangesAsync();
 
 
@@ -107,7 +107,7 @@ app.MapGet("/EF", async (ApplicationDbContext context) =>
 
 app.MapGet("/Dapper", async () =>
 {
-  
+
     using (IDbConnection db = new NpgsqlConnection("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234"))
     {
         db.Open();
@@ -118,14 +118,20 @@ app.MapGet("/Dapper", async () =>
     return Results.Ok();
 }).WithOpenApi();
 
-app.MapGet("/CallApi2", async (IHttpClientFactory httpClientFactory) =>
+app.MapGet("/CallApi2", async (IHttpClientFactory httpClientFactory, IHttpContextAccessor ctx) =>
 {
-    var requestId = Activity.Current?.Id;
 
     Log.Information("Calling api2");
 
-    var client = httpClientFactory.CreateClient("api2");
-    client.DefaultRequestHeaders.Add("Request-Id", requestId);
+    var client = httpClientFactory.CreateClient("api2");  
+
+    var requestId = Activity.Current?.Id;
+    if (requestId != null)
+    {
+        client.DefaultRequestHeaders.AddCorrelationId(ctx.HttpContext!.GetCorrelationId()!);
+        client.DefaultRequestHeaders.AddParentRequestId(requestId);
+    }
+
 
     var response = await client.GetAsync("WeatherForecast");
 
