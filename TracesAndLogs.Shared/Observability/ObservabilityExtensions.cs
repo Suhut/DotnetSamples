@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
@@ -6,48 +7,59 @@ using NpgsqlTypes;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
+using Serilog.Context;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 using Serilog.Sinks.PostgreSQL.ColumnWriters;
-using TracesAndLogs.Shared.Observability.CusttomColumnWriter;
-
+using System.Diagnostics;
+using System.Net.Http.Headers;
+using TracesAndLogs.Shared.Observability.CusttomColumnWriter; 
 
 namespace TracesAndLogs.Shared.Observability;
 
 public static class ObservabilityExtensions
 {
+
+    public const string CorrelationIdKey = "x-correlation-id";
+    public const string ParentRequestIdKey = "x-parent-request-id";
+
     public static void AddTracesAndLogs(this WebApplicationBuilder builder)
     {
         IDictionary<string, ColumnWriterBase> columnWriters = new Dictionary<string, ColumnWriterBase>
-{
-    { "Id", new IdAutoIncrementColumnWriter () },
-    { "Message", new RenderedMessageColumnWriter() },
-    { "MessageTemplate", new MessageTemplateColumnWriter() },
-    { "Level", new LevelColumnWriter() },
-    { "LevelName", new LevelColumnWriter(true, NpgsqlDbType.Text) },
-    { "Timestamp", new TimestampColumnWriter() },
-    { "Exception", new ExceptionColumnWriter() },
-    { "LogEvent", new LogEventSerializedColumnWriter() },
-    //{ "Properties", new PropertiesColumnWriter(NpgsqlDbType.Text) },  
-    { "SpanId", new SpanIdColumnWriterBase() },
-    { "TranceId", new TranceIdColumnWriterBase() },
-    { "RequestId", new SinglePropertyColumnWriter("RequestId", format: "l") },
+        {
+            { "Id", new IdAutoIncrementColumnWriter () },
+            { "Message", new RenderedMessageColumnWriter() },
+            { "MessageTemplate", new MessageTemplateColumnWriter() },
+            { "Level", new LevelColumnWriter() },
+            { "LevelName", new LevelColumnWriter(true, NpgsqlDbType.Text) },
+            { "Timestamp", new TimestampColumnWriter() },
+            { "Exception", new ExceptionColumnWriter() },
+            { "LogEvent", new LogEventSerializedColumnWriter() },
+            //{ "Properties", new PropertiesColumnWriter(NpgsqlDbType.Text) },  
+            { "SpanId", new SpanIdColumnWriterBase() },
+            { "TranceId", new TranceIdColumnWriterBase() },
+            { "RequestId", new SinglePropertyColumnWriter("RequestId", format: "l") },
+            { "CorrelationId", new SinglePropertyColumnWriter("CorrelationId") },
+            { "MachineName", new SinglePropertyColumnWriter("MachineName") }
 
-};
+        };
 
         builder.Host
             .UseSerilog((context, config) =>
-            {
+            { 
+
+
                 config.MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                     .Enrich.FromLogContext()
                     .Enrich.WithProperty("Application", context.HostingEnvironment.ApplicationName)
-                    .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName)
-
+                    .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName) 
+                    .Enrich.WithMachineName() 
 
                     .WriteTo.PostgreSQL("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;",
                                             "logs",
                                             columnOptions: columnWriters,
                                             needAutoCreateTable: true
+                
 
                     )
                     ;
@@ -78,9 +90,94 @@ public static class ObservabilityExtensions
             );
     }
 
-    public static void AddTracesAndLogs(this WebApplication app)
+    public static void UseTracesAndLogs(this WebApplication app)
     {
-        app.UseMiddleware<RequestLoggingMiddleware>();
-        app.UseMiddleware<RequestIdMiddleware>();
+        app.UseCorrelationId();
+        app.UseParentRequestId();
+        app.UseRequestLogging();
     }
+
+    //Logs
+    private static IApplicationBuilder UseRequestLogging(this IApplicationBuilder app)
+      => app.Use(async (ctx, next) =>
+      {
+          if (!ctx.Request.Path.Value.Contains("serilog-ui"))
+          {
+              ctx.Request.EnableBuffering();
+
+              var requestLog = new
+              {
+                  Path = ctx.Request.Path,
+                  QueryString = ctx.Request.QueryString.ToString(),
+                  Method = ctx.Request.Method,
+                  Headers = ctx.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()),
+                  Body = await ReadRequestBody(ctx.Request),
+                  Timestamp = DateTime.UtcNow
+              };
+
+              Log.Information("Request: {@RequestLog}", requestLog);
+
+              ctx.Request.Body.Position = 0;
+          }
+
+          await next();
+      });
+
+    private static async Task<string> ReadRequestBody(HttpRequest request)
+    {
+        if (request.Body != null)
+        {
+            if (request.Body.Length > 0)
+            {
+                request.Body.Position = 0;
+                using (StreamReader reader = new StreamReader(request.Body))
+                {
+                    return await reader.ReadToEndAsync();
+                }
+
+            }
+        }
+
+        return await Task.FromResult<string>(null!); 
+    }
+
+    //CorrelationId
+    private static IApplicationBuilder UseCorrelationId(this IApplicationBuilder app)
+     => app.Use(async (ctx, next) =>
+     {
+         if (!ctx.Request.Headers.TryGetValue(CorrelationIdKey, out var correlationId))
+         {
+             correlationId = Guid.NewGuid().ToString("N");
+         }
+
+         ctx.Items[CorrelationIdKey] = correlationId.ToString();
+
+         LogContext.PushProperty("CorrelationId", correlationId.ToString());
+         Activity.Current?.SetTag("CorrelationId", correlationId.ToString());
+
+         await next();
+     });
+
+    public static void AddCorrelationId(this HttpRequestHeaders headers, string correlationId)
+        => headers.TryAddWithoutValidation(CorrelationIdKey, correlationId); 
+    public static string? GetCorrelationId(this HttpContext context)
+        => context.Items.TryGetValue(CorrelationIdKey, out var correlationId) ? correlationId as string : null;
+
+    //ParentRequestId
+    private static IApplicationBuilder UseParentRequestId(this IApplicationBuilder app)
+    => app.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.Headers.TryGetValue(CorrelationIdKey, out var parentRequestIdKey))
+        {
+            ctx.Items[CorrelationIdKey] = parentRequestIdKey.ToString();
+        } 
+      
+        await next();
+    });
+
+    public static void AddParentRequestId(this HttpRequestHeaders headers, string parentRequestId)
+        => headers.TryAddWithoutValidation(ParentRequestIdKey, parentRequestId); 
+    public static string? GetParentRequestId(this HttpContext context)
+        => context.Items.TryGetValue(ParentRequestIdKey, out var parentRequestId) ? parentRequestId as string : null;
+
 }
