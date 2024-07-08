@@ -3,7 +3,7 @@ using TracesAndLogs.Shared.Observability;
 var builder = WebApplication.CreateBuilder(args);
 
 
-builder.AddTracesAndLogs();
+builder.AddTracesAndLogs(false);
 
 // Add services to the container.
 
@@ -13,7 +13,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
-app.UseTracesAndLogs();
+app.UseTracesAndLogs(false);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

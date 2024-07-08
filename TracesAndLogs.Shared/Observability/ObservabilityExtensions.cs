@@ -11,9 +11,14 @@ using Serilog.Context;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 using Serilog.Sinks.PostgreSQL.ColumnWriters;
+using Serilog.Ui.Core.OptionsBuilder;
+using Serilog.Ui.PostgreSqlProvider.Extensions;
+using Serilog.Ui.PostgreSqlProvider.Models;
+using Serilog.Ui.Web.Extensions;
+using Serilog.Ui.Web.Models;
 using System.Diagnostics;
 using System.Net.Http.Headers;
-using TracesAndLogs.Shared.Observability.CusttomColumnWriter; 
+using TracesAndLogs.Shared.Observability.CusttomColumnWriter;
 
 namespace TracesAndLogs.Shared.Observability;
 
@@ -23,8 +28,10 @@ public static class ObservabilityExtensions
     public const string CorrelationIdKey = "x-correlation-id";
     public const string ParentRequestIdKey = "x-parent-request-id";
 
-    public static void AddTracesAndLogs(this WebApplicationBuilder builder)
+    public static void AddTracesAndLogs(this WebApplicationBuilder builder, bool serilogUi)
     {
+        var configuration = builder.Configuration;
+
         IDictionary<string, ColumnWriterBase> columnWriters = new Dictionary<string, ColumnWriterBase>
         {
             { "Id", new IdAutoIncrementColumnWriter () },
@@ -46,20 +53,20 @@ public static class ObservabilityExtensions
 
         builder.Host
             .UseSerilog((context, config) =>
-            { 
+            {
 
 
                 config.MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                     .Enrich.FromLogContext()
                     .Enrich.WithProperty("Application", context.HostingEnvironment.ApplicationName)
-                    .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName) 
-                    .Enrich.WithMachineName() 
+                    .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName)
+                    .Enrich.WithMachineName()
 
-                    .WriteTo.PostgreSQL("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;",
+                    .WriteTo.PostgreSQL(configuration["ConnectionStrings:SerilogConnection"], //"User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;",
                                             "logs",
                                             columnOptions: columnWriters,
                                             needAutoCreateTable: true
-                
+
 
                     )
                     ;
@@ -88,20 +95,44 @@ public static class ObservabilityExtensions
                     options.Endpoint = new Uri("http://localhost:4317");
                 })
             );
+
+        if (serilogUi)
+        {
+            builder.Services.AddSerilogUi(options => options
+                      .UseNpgSql(optionsDb => optionsDb.WithConnectionString(configuration["ConnectionStrings:SerilogConnection"])
+                                                  .WithTable("logs")
+                                                  .WithSinkType(PostgreSqlSinkType.SerilogSinksPostgreSQLAlternative)
+                                                  )
+                      .RegisterDisabledSortForProviderKey("CorrelationId")
+                      );
+
+        }
     }
 
-    public static void UseTracesAndLogs(this WebApplication app)
+
+    public static void UseTracesAndLogs(this WebApplication app, bool serilogUi)
     {
         app.UseCorrelationId();
         app.UseParentRequestId();
         app.UseRequestLogging();
+
+        if (serilogUi)
+        {
+            //app.UseSerilogUi();//serilog-ui  
+            app.UseSerilogUi(options =>
+            {
+                options.WithAuthenticationType(AuthenticationType.Basic);
+                options.WithRoutePrefix("serilog-ui");
+
+            });
+        }
     }
 
     //Logs
     private static IApplicationBuilder UseRequestLogging(this IApplicationBuilder app)
       => app.Use(async (ctx, next) =>
       {
-          if (!ctx.Request.Path.Value.Contains("serilog-ui"))
+          if (!ctx.Request.Path.Value.ToLower().Contains("serilog-ui"))
           {
               ctx.Request.EnableBuffering();
 
@@ -138,7 +169,7 @@ public static class ObservabilityExtensions
             }
         }
 
-        return await Task.FromResult<string>(null!); 
+        return await Task.FromResult<string>(null!);
     }
 
     //CorrelationId
@@ -159,7 +190,7 @@ public static class ObservabilityExtensions
      });
 
     public static void AddCorrelationId(this HttpRequestHeaders headers, string correlationId)
-        => headers.TryAddWithoutValidation(CorrelationIdKey, correlationId); 
+        => headers.TryAddWithoutValidation(CorrelationIdKey, correlationId);
     public static string? GetCorrelationId(this HttpContext context)
         => context.Items.TryGetValue(CorrelationIdKey, out var correlationId) ? correlationId as string : null;
 
@@ -170,13 +201,13 @@ public static class ObservabilityExtensions
         if (ctx.Request.Headers.TryGetValue(CorrelationIdKey, out var parentRequestIdKey))
         {
             ctx.Items[CorrelationIdKey] = parentRequestIdKey.ToString();
-        } 
-      
+        }
+
         await next();
     });
 
     public static void AddParentRequestId(this HttpRequestHeaders headers, string parentRequestId)
-        => headers.TryAddWithoutValidation(ParentRequestIdKey, parentRequestId); 
+        => headers.TryAddWithoutValidation(ParentRequestIdKey, parentRequestId);
     public static string? GetParentRequestId(this HttpContext context)
         => context.Items.TryGetValue(ParentRequestIdKey, out var parentRequestId) ? parentRequestId as string : null;
 
