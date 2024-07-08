@@ -3,19 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using OpenTelemetry.Trace;
 using Serilog;
-using Serilog.Ui.Core.OptionsBuilder;
-using Serilog.Ui.PostgreSqlProvider.Extensions;
-using Serilog.Ui.PostgreSqlProvider.Models;
-using Serilog.Ui.Web.Extensions;
 using System.Data;
 using System.Diagnostics;
-using System.Net.Http;
 using TracesAndLogs;
 using TracesAndLogs.Shared.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddTracesAndLogs();
+builder.AddTracesAndLogs(true);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
         options.UseNpgsql("Host=localhost;Database=coba_tracing;Username=postgres;Password=1234"));
@@ -32,15 +27,7 @@ builder.Services.AddHttpClient("api2", c =>
         "accept", "application/json"); 
 
 });
-
-//version : 3.* 
-builder.Services.AddSerilogUi(options => options
-    .UseNpgSql(optionsDb => optionsDb.WithConnectionString("User ID=postgres;Password=1234;Host=localhost;Port=5432;Database=serilog;")
-                                .WithTable("logs")
-                                .WithSinkType(PostgreSqlSinkType.SerilogSinksPostgreSQLAlternative)
-                                )
-    );
-
+ 
 
 var app = builder.Build();
 
@@ -55,9 +42,10 @@ if (app.Environment.IsDevelopment())
 }
 
 
-app.UseTracesAndLogs();
+app.UseTracesAndLogs(true);
 
-app.UseSerilogUi();//serilog-ui  
+ 
+
 
 app.MapGet("/cmdSuccess", async (TracerProvider tracerProvider, ILogger<Program> logger) =>
 {
