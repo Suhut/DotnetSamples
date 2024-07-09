@@ -80,7 +80,7 @@ public static class ObservabilityExtensions
                 .ConfigureResource(resourceBuilder =>
                 {
                     resourceBuilder.AddService(
-                        builder.Environment.ApplicationName,
+                        "Idu." + builder.Environment.ApplicationName,
                         builder.Environment.EnvironmentName,
                         "1.0",
                         false,
@@ -89,7 +89,9 @@ public static class ObservabilityExtensions
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
                 .AddEntityFrameworkCoreInstrumentation()
+                .AddSqlClientInstrumentation()
                 .AddNpgsql()
+                .AddHangfireInstrumentation()
                 .AddOtlpExporter(options =>
                 {
                     options.Endpoint = new Uri("http://localhost:4317");
@@ -192,7 +194,7 @@ public static class ObservabilityExtensions
     public static void AddCorrelationId(this HttpRequestHeaders headers, string correlationId)
         => headers.TryAddWithoutValidation(CorrelationIdKey, correlationId);
     public static string? GetCorrelationId(this HttpContext context)
-        => context.Items.TryGetValue(CorrelationIdKey, out var correlationId) ? correlationId as string : null;
+        => context!.Items!.TryGetValue(CorrelationIdKey, out var correlationId) ? correlationId as string : null;
 
     //ParentRequestId
     private static IApplicationBuilder UseParentRequestId(this IApplicationBuilder app)

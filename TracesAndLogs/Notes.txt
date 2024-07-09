@@ -1,2 +1,8 @@
 dotnet ef migrations add InitialCreate
 dotnet ef database update
+
+dotnet ef migrations add InitialCreate --context PgDbContext --output-dir Migrations/PgMigrations
+dotnet ef migrations add InitialCreate --context SqlServerDbContext --output-dir Migrations/SqlServerMigrations
+
+dotnet ef database update  --context PgDbContext
+dotnet ef database update  --context SqlServerDbContext
